@@ -1,8 +1,5 @@
-
-
-
 --Get class
-local Class = "ELF"
+local Class = "Illusionist"
 
 ----------------------//Service\\----------------------
 local Services = {
