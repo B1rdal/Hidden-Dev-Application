@@ -1,7 +1,6 @@
 -- Connected Discord-GitHub | Discord: B1rdal | GitHub: B1rdal | Roblox: B1rdal
 
---Get class
-local Class = "Illusionist"
+local Class = "Illusionist" -- Class used for this ability
 
 ----------------------//Service\\----------------------
 local Services = {
@@ -11,23 +10,15 @@ local Services = {
 	UserInputService = game:GetService("UserInputService"),
 	RunService = game:GetService("RunService")
 }
-
 local starterPlayerScripts = Services.StarterPlayer:FindFirstChild("StarterPlayerScripts")
 
 ----------------------//Visual Mesh\\----------------------
-local resources = Services.ReplicatedStorage:WaitForChild("Meshes")
-local PROJECTILESFOLDER = Services.ReplicatedStorage:WaitForChild("CLIENTACCESS"):WaitForChild("CLASSES"):WaitForChild(Class):WaitForChild("PROJECTILES")
+local resources = Services.ReplicatedStorage:FindFirstChild("Meshes") -- Get the shared meshes
+if not resources then return end -- Stop if the meshes are missing
+local PROJECTILESFOLDER = Services.ReplicatedStorage:WaitForChild("CLIENTACCESS"):WaitForChild("CLASSES"):WaitForChild(Class)
+	:WaitForChild("PROJECTILES")-- Get the class' projectiles folider
 
 ----------------------//STATS\\----------------------
---------LMB---------
-local LMBStats = {
-	CD = .8,
-	Range = 40,
-	Velocity = 50,
-	Damage = 25,
-	Radius = 5
-}
-
 ---------Q----------
 local QStats = {
 	CD = .1,
@@ -40,11 +31,12 @@ local QStats = {
 }
 
 ----------------------//Remotes\\----------------------
-local Remote = Services.ReplicatedStorage:WaitForChild("REMOTES"):WaitForChild("ServerRemote")
-local Damage = Services.ReplicatedStorage.REMOTES:WaitForChild("DamageRemote")
-local RemoteProjectile = Services.ReplicatedStorage.REMOTES:WaitForChild("ProjectileServer")
+local Remote = Services.ReplicatedStorage:WaitForChild("REMOTES"):WaitForChild("ServerRemote") -- Main server remote
+local Damage = Services.ReplicatedStorage.REMOTES:WaitForChild("DamageRemote") -- Sends damage to the server
+local RemoteProjectile = Services.ReplicatedStorage.REMOTES:WaitForChild("ProjectileServer") -- Sends replicated projectile 
 
 ----------------------//Values \\----------------------
+
 local abilityDebounce = {
 	LMBdoing = false,
 	Qdoing = false,
@@ -52,7 +44,6 @@ local abilityDebounce = {
 	Fdoing = false,
 	Rdoing = false,
 }
---Cooldown tracker
 local cooldownEnds = {
 	LMB = 0,
 	Q = 0,
@@ -67,20 +58,21 @@ local anim = 1
 local dashposition = "Forward"
 local dashside = "None"
 
-local player = game.Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local h = character:WaitForChild("Humanoid")
-local Root = character:WaitForChild("HumanoidRootPart")
-local animator = h:FindFirstChildOfClass("Animator") or h:WaitForChild("Animator")
+local player = game.Players.LocalPlayer -- Get local player
+local character = player.Character or player.CharacterAdded:Wait() -- Wait for the character
+local h = character:WaitForChild("Humanoid") -- Get the Humanoid
+local Root = character:WaitForChild("HumanoidRootPart") -- Get the root part
+local animator = h:FindFirstChildOfClass("Animator") or h:WaitForChild("Animator") -- Get the animator
 
 local uiFrame = script.Parent
 
--- Cache animations
+--Cache animations
 local LMBANIM1 = animator:LoadAnimation(uiFrame.LMBANIM1)
 local LMBANIM2 = animator:LoadAnimation(uiFrame.LMBANIM2)
-local LMBAnimations = {LMBANIM1, LMBANIM2}
-
 local QANIM = animator:LoadAnimation(uiFrame.QANIM)
+
+local LMBAnimations = {LMBANIM1, LMBANIM2} -- Keep both LMB animations together.
+
 
 ----------------------//SOUNDS\\----------------------
 local abilitySounds = {
@@ -101,287 +93,93 @@ sounds(character.HumanoidRootPart,"rbxassetid://157878578",1.4,2)
 @param vol: The volume of the sound
 @param pit: The playback speed of the sound
 ]]
-
 local function sounds(Par,id,vol,pit)
-	local sound = Instance.new("Sound")
+	local sound = Instance.new("Sound") -- Create the sound
 
-	sound.Parent = Par
+	sound.Parent = Par -- Put it on the given part
 	sound.SoundId = id
 	sound.Volume = vol
 	sound.PlaybackSpeed = pit
 
-	sound:Play()
+	sound:Play() -- Play the sound
 
-	Services.Debris:AddItem(sound,5)
+	Services.Debris:AddItem(sound,5) -- Remove it after a few seconds
 
 	return sound
 end
 
 ----------------------//GENERAL FUNCTIONS\\----------------------
 
--- Find the model containing a humanoid without assuming
--- the hit part is exactly one or two parents deep
+-- Find the model that owns the hit part.
 local function getHumanoidTarget(instance)
-	local current = instance
+	local current = instance -- Start from the hit part
 
-	while current and current ~= workspace do
+	while current and current ~= workspace do -- Check parents until Workspace
 		if current:IsA("Model") then
-			local humanoid = current:FindFirstChildOfClass("Humanoid")
+			local humanoid = current:FindFirstChildOfClass("Humanoid") -- Look for a Humanoid
 
 			if humanoid then
 				return current,humanoid
 			end
 		end
 
-		current = current.Parent
+		current = current.Parent -- Move up one parent
 	end
 
 	return nil,nil
 end
 
--- Check whether an ability is currently on cooldown
+-- Check if an ability is cooling down
 local function isOnCooldown(action)
-	return os.clock() < (cooldownEnds[action] or 0)
+	return os.clock() < (cooldownEnds[action] or 0) -- Check if the cooldown is still active
 end
 
--- Cooldown UI visual + Cooldown Handler
+-- Handle the cooldown and its UI.
 local function startCooldown(action,cooldownTime)
-	local cooldownFrame = uiFrame[action].Cooldown
+	local cooldownFrame = uiFrame[action].Cooldown -- Get this ability cooldown UI
 	local cooldownValue = cooldownFrame.CD
 
-	local newCooldownEnd = os.clock() + cooldownTime
+	local newCooldownEnd = os.clock() + cooldownTime -- Time the cooldown should end
 
-	-- Do not shorten an existing cooldown
-	cooldownEnds[action] = math.max(cooldownEnds[action] or 0,newCooldownEnd)
+	cooldownEnds[action] = math.max(cooldownEnds[action] or 0,newCooldownEnd) -- Do not shorten an existing cooldown
 
-	cooldownVersions[action] += 1
+	cooldownVersions[action] += 1 -- Mark this as the newest cooldown
 
 	local version = cooldownVersions[action]
 
-	cooldownFrame.Visible = true
+	cooldownFrame.Visible = true -- Show the cooldown
 
 	task.spawn(function()
 		while version == cooldownVersions[action] do
-			local remaining = cooldownEnds[action] - os.clock()
+			local remaining = cooldownEnds[action] - os.clock() -- Time left
 
 			if remaining <= 0 then
-				break
+				break --Stop the loop if cooldown is over
 			end
 
 			cooldownValue.Value = remaining
-			cooldownFrame.Text = string.format("%.1f",remaining)
+			cooldownFrame.Text = string.format("%.1f",remaining) -- Show one decimal place
 
-			task.wait(.1)
+			task.wait(.1) -- Update every 0.1 seconds
 		end
 
-		-- A newer cooldown replaced this one
 		if version ~= cooldownVersions[action] then
-			return
+			return -- exit if the verison is outdated
 		end
 
 		cooldownEnds[action] = 0
 		cooldownValue.Value = 0
-		cooldownFrame.Text = action
+		cooldownFrame.Text = action -- Put the ability name back
 	end)
-end
-
-----------------------//LMB\\----------------------
-
-local function LMBFire()
-	-- Animation Handling
-	if anim == 1 then
-		anim = 2
-
-		LMBANIM1:Play()
-		LMBANIM1:AdjustSpeed(1.25)
-
-		task.wait(.2)
-	else
-		anim = 1
-
-		LMBANIM2:Play()
-		LMBANIM2:AdjustSpeed(1.25)
-
-		task.wait(.1)
-	end
-
-	-- Stop if the character died during the attack animation
-	if h.Health <= 0 then
-		return
-	end
-
-	--Remote:FireServer("IllusionistLMB", "Illusionist", nil, LMBStats.Velocity, LMBStats.Range, nil, QLMB)
-	sounds(character.HumanoidRootPart,"rbxassetid://" .. abilitySounds.QLMB,10,1.5)
-
-	-- Create the local projectile visual
-	local projectile = PROJECTILESFOLDER.attack
-	local bullet = projectile:Clone()
-
-	local projectileCFrame = character.HumanoidRootPart.CFrame * CFrame.new(0,1,-4)
-
-	bullet.Size = Vector3.new(2.5,2.5,2.5)
-	bullet.CFrame = projectileCFrame
-	bullet.Material = Enum.Material.Neon
-	bullet.Transparency = 0
-	bullet.LocalTransparencyModifier = 0
-	bullet.CanCollide = false
-	bullet.Anchored = true
-	bullet.Name = "Illusionist_Sphere"
-	bullet.Parent = workspace.GameplayProjectiles
-
-	-- Replicate projectile visual to other clients
-	local projectileData = {
-		Projectile = projectile,
-		ProjectileCframe = projectileCFrame,
-		ProjectileColor = "",
-		ProjectileStats = LMBStats,
-	}
-
-	RemoteProjectile:FireServer(projectileData)
-
-	-- Prevent this projectile from registering multiple hits
-	local hitConfirmed = false
-
-	-- Spherecast settings
-	local rayParams = RaycastParams.new()
-
-	rayParams.FilterDescendantsInstances = {
-		character,
-		workspace.GameplayProjectiles
-	}
-
-	rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	rayParams.IgnoreWater = true
-
-	-- Value to track projectile movement
-	local distanceTraveled = 0
-
-	-- Lock the direction when the projectile is fired
-	local direction = projectileCFrame.LookVector
-
-	local connection
-
-	-- Clean projectile and disconnect Heartbeat
-	local function cleanupProjectile()
-		if connection then
-			connection:Disconnect()
-			connection = nil
-		end
-
-		if bullet and bullet.Parent then
-			bullet:Destroy()
-		end
-	end
-
-	-- Handle Spherecast hit
-	local function detectHit(result)
-		if not result then
-			return false
-		end
-
-		local hitInstance = result.Instance
-		local hitTarget,targetHumanoid = getHumanoidTarget(hitInstance)
-
-		-- Detect valid humanoid target
-		if hitTarget and targetHumanoid and hitTarget ~= character then
-			if not hitTarget:IsDescendantOf(character) and targetHumanoid.Health > 0 then
-				hitConfirmed = true
-
-				local damageData = {
-					Type = "Projectile",
-					Name = "IllusionistLMB",
-					Class = "Illusionist",
-					action = nil,
-
-					Damage = LMBStats.Damage,
-					Velocity = nil,
-					Range = LMBStats.Range,
-					Radius = nil,
-
-					Target = hitTarget,
-
-					statusEffect = {"StatusEffect"},
-					hitEffect = {"HitEffect"},
-
-					Duration = 0,
-				}
-
-				-- Send data to the server to be compared with
-				Damage:FireServer(damageData)
-
-				return true
-			end
-		end
-
-		-- Stop the projectile if it hits a solid object
-		if hitInstance:IsA("BasePart") and hitInstance.CanCollide and hitInstance.Transparency < 1 then
-			hitConfirmed = true
-
-			return true
-		end
-
-		return false
-	end
-
-	-- Cleanup based on maximum projectile lifetime
-	Services.Debris:AddItem(bullet,(LMBStats.Range / LMBStats.Velocity) + 1)
-
-	-- Projectile Movement
-	connection = Services.RunService.Heartbeat:Connect(function(deltaTime)
-		-- Cleanup if projectile is removed
-		if not bullet.Parent then
-			cleanupProjectile()
-			return
-		end
-
-		-- Stop updating after a confirmed hit
-		if hitConfirmed then
-			cleanupProjectile()
-			return
-		end
-
-		-- Prevent projectile moving further than range
-		local remainingDistance = LMBStats.Range - distanceTraveled
-
-		if remainingDistance <= 0 then
-			cleanupProjectile()
-			return
-		end
-
-		-- Calculate how far the projectile moves this frame
-		local moveDistance = math.min(LMBStats.Velocity * deltaTime,remainingDistance)
-		local currentPosition = bullet.Position
-
-		-- Spherecast to check for hits
-		local result = workspace:Spherecast(currentPosition,bullet.Size.X * 0.5,direction * moveDistance,rayParams)
-
-		if detectHit(result) then
-			cleanupProjectile()
-			return
-		end
-
-		-- Move projectile
-		bullet.CFrame = bullet.CFrame + direction * moveDistance
-		distanceTraveled += moveDistance
-
-		-- Cleanup when projectile reaches range
-		if distanceTraveled >= LMBStats.Range then
-			cleanupProjectile()
-		end
-	end)
-end
-
-local function LMBcooldown(addition)
-	startCooldown("LMB",LMBStats.CD + addition)
 end
 
 --------------------------//Q\\--------------------------
 
--- Calculate the dash position for the Q dash
+-- Find where Q should land.
 local function getQFinalPosition()
-	local rootCFrame = character.HumanoidRootPart.CFrame
+	local rootCFrame = character.HumanoidRootPart.CFrame -- Save the current position
 
-	local moveRayParams = RaycastParams.new()
+	local moveRayParams = RaycastParams.new() -- Setup the raycast filter
 
 	moveRayParams.FilterDescendantsInstances = {
 		character,
@@ -391,36 +189,31 @@ local function getQFinalPosition()
 	moveRayParams.FilterType = Enum.RaycastFilterType.Exclude
 	moveRayParams.IgnoreWater = true
 
-	-- Cast forward to check whether an obstacle blocks the full dash distance
-	local moveRayResult = workspace:Raycast(rootCFrame.Position,rootCFrame.LookVector * QStats.TPRange,moveRayParams)
+	local moveRayResult = workspace:Raycast(rootCFrame.Position,rootCFrame.LookVector * QStats.TPRange,moveRayParams) -- Check for a wall
 
-	-- Default destination is the full dash range
-	local finalPosition = rootCFrame.Position + (rootCFrame.LookVector * QStats.TPRange)
+	local finalPosition = rootCFrame.Position + (rootCFrame.LookVector * QStats.TPRange) -- Start with the full dash range
 
-	-- Stop slightly before the first obstacle encountered
 	if moveRayResult then
 		local distance = (moveRayResult.Position - rootCFrame.Position).Magnitude
-		local safeDistance = math.max(0,distance - 2)
+		local safeDistance = math.max(0,distance - 2) -- Stop a little before the wall
 
-		finalPosition = rootCFrame.Position + (rootCFrame.LookVector * safeDistance)
+		finalPosition = rootCFrame.Position + (rootCFrame.LookVector * safeDistance) --Update final position
 	end
 
-	-- Cast downward from slightly above the destination
-	local groundRayResult = workspace:Raycast(finalPosition + Vector3.new(0,5,0),Vector3.new(0,-15,0),moveRayParams)
+	local groundRayResult = workspace:Raycast(finalPosition + Vector3.new(0,5,0),Vector3.new(0,-15,0),moveRayParams) -- Check for the ground
 
 	if groundRayResult then
-		finalPosition = Vector3.new(finalPosition.X,groundRayResult.Position.Y + .5,finalPosition.Z)
+		finalPosition = Vector3.new(finalPosition.X,groundRayResult.Position.Y + .5,finalPosition.Z) --Update final position
 	end
 
 	return finalPosition
 end
 
--- Create the predicted hitbox range
+-- Show Q landing position
 local function createQIndicator(finalPosition)
-	-- To make it scale correctly with the hitbox
 	local scaleConversion = 3
 
-	local initialBullet = Services.ReplicatedStorage.Meshes.FlatCircle:Clone()
+	local initialBullet = Services.ReplicatedStorage.Meshes.FlatCircle:Clone() -- Create the landing marker
 
 	initialBullet.CFrame = CFrame.new(finalPosition)
 	initialBullet.Material = Enum.Material.Neon
@@ -430,47 +223,45 @@ local function createQIndicator(finalPosition)
 	initialBullet.Name = "Illu_Predict"
 
 	if initialBullet:FindFirstChild("Mesh") then
-		initialBullet.Mesh.Scale = Vector3.new(QStats.Radius * scaleConversion,1,QStats.Radius * scaleConversion)
+		initialBullet.Mesh.Scale = Vector3.new(QStats.Radius * scaleConversion,1,QStats.Radius * scaleConversion) -- Match the Q radius
 	end
 
 	initialBullet.TopSurface = Enum.SurfaceType.Smooth
 	initialBullet.BottomSurface = Enum.SurfaceType.Smooth
 	initialBullet.Parent = workspace.GameplayProjectiles
 
-	Services.Debris:AddItem(initialBullet,2)
+	Services.Debris:AddItem(initialBullet,2) -- Remove the marker later
 
 	return initialBullet
 end
 
--- Move the character using AlignPosition instead of BodyPosition
+-- Move the player to the Q position.
 local function moveCharacterToQPosition(finalPosition)
 	local root = character.HumanoidRootPart
 
-	-- Remove existing horizontal momentum before starting the movement
 	local velocity = root.AssemblyLinearVelocity
-	root.AssemblyLinearVelocity = Vector3.new(0,velocity.Y,0)
+	root.AssemblyLinearVelocity = Vector3.new(0,velocity.Y,0) -- Clear horizontal momentum
 	root.AssemblyAngularVelocity = Vector3.zero
 
-	local attachment = Instance.new("Attachment")
+	local attachment = Instance.new("Attachment") -- Attachment used for movement
 
 	attachment.Name = "QMovementAttachment"
 	attachment.Parent = root
 
-	local alignPosition = Instance.new("AlignPosition")
+	local alignPosition = Instance.new("AlignPosition") -- Pull the player to the target
 
 	alignPosition.Name = "QMovement"
 	alignPosition.Mode = Enum.PositionAlignmentMode.OneAttachment
 	alignPosition.Attachment0 = attachment
-	alignPosition.Position = finalPosition + Vector3.new(0,2.5,0)
+	alignPosition.Position = finalPosition + Vector3.new(0,2.5,0) -- Set the dash destination
 	alignPosition.ApplyAtCenterOfMass = true
 	alignPosition.RigidityEnabled = false
 	alignPosition.MaxForce = 545000
-	alignPosition.MaxVelocity = 200
-	alignPosition.Responsiveness = 100
+	alignPosition.MaxVelocity = 200 -- Limit dash speed
+	alignPosition.Responsiveness = 100 -- Make the dash react quickly
 	alignPosition.Parent = root
 
-	-- Remove Q movement momentum once the dash finishes
-	task.delay(.1,function()
+	task.delay(.1,function() -- Clean up after the dash
 		if alignPosition.Parent then
 			alignPosition:Destroy()
 		end
@@ -481,20 +272,20 @@ local function moveCharacterToQPosition(finalPosition)
 
 		if root.Parent then
 			local currentVelocity = root.AssemblyLinearVelocity
-
+			-- Reset the player's velocity
 			root.AssemblyLinearVelocity = Vector3.new(0,currentVelocity.Y,0)
 			root.AssemblyAngularVelocity = Vector3.zero
 		end
 	end)
 end
 
--- Q Explosion visual
+-- Create the Q explosion effect
 local function createQExplosion(finalPosition)
-	local scaleConversion = 3
+	local scaleConversion = 3 -- Conversion for the visual
 
-	local explosion = Services.ReplicatedStorage.Meshes.Part:Clone()
+	local explosion = Services.ReplicatedStorage.Meshes.Part:Clone() -- Create the explosion effect
 
-	explosion.Parent = character.Effect
+	explosion.Parent = character.Effect -- Parent to the Effect folder
 	explosion.Name = "ExplosionCircle"
 
 	explosion.Size = Vector3.new(0,0,0)
@@ -505,26 +296,24 @@ local function createQExplosion(finalPosition)
 	explosion.Anchored = true
 	explosion.CFrame = CFrame.new(finalPosition)
 
-	-- Make the explosion visual spherical
-	local explosionMesh = Instance.new("SpecialMesh")
+	local explosionMesh = Instance.new("SpecialMesh") -- Make the effect round
 
 	explosionMesh.MeshType = Enum.MeshType.Sphere
 	explosionMesh.Scale = Vector3.new(1,1,1)
 	explosionMesh.Parent = explosion
 
-	-- Cleanup
-	Services.Debris:AddItem(explosion,1)
+	Services.Debris:AddItem(explosion,1) -- Clean it up after a second
 
-	-- Explosion visual gradually expands and fades
+	-- (Better to use TweenService here)
 	task.spawn(function()
-		for i = 1,20 do
+		for i = 1,20 do -- Grow and fade the effect
 			if not explosion.Parent then
-				return
+				return -- Stops if the character doesn't exisdt
 			end
 
 			task.wait()
 
-			local size = QStats.Radius * scaleConversion * (i / 20)
+			local size = QStats.Radius * scaleConversion * (i / 20) -- Increass sieze per loop
 
 			explosion.Size = Vector3.new(size,size,size)
 			explosion.Transparency += .03
@@ -538,36 +327,34 @@ local function createQExplosion(finalPosition)
 	return explosion
 end
 
--- Damage up to QStats.MaxTarget unique enemies
+-- Damage enemies around Q
 local function damageQTargets(finalPosition)
-	local enemyFolder = workspace:FindFirstChild("Enemy")
+	local enemyFolder = workspace:FindFirstChild("Enemy") -- Get the enemy folder
 
 	if not enemyFolder then
-		return
+		return -- Stops if the character doesn't exist
 	end
 
-	local overlapParams = OverlapParams.new()
+	local overlapParams = OverlapParams.new() -- Setup the radius search
 
-	overlapParams.FilterDescendantsInstances = {enemyFolder}
-	overlapParams.FilterType = Enum.RaycastFilterType.Include
-	
+	overlapParams.FilterDescendantsInstances = {enemyFolder} -- Whitelist the enemy's folder
+	overlapParams.FilterType = Enum.RaycastFilterType.Include -- Whitelist
+
 	local radius = QStats.Radius + 7
 
-	-- Find all nearby enemy parts with one spatial query
-	local nearbyParts = workspace:GetPartBoundsInRadius(finalPosition,radius,overlapParams)
+	local nearbyParts = workspace:GetPartBoundsInRadius(finalPosition,radius,overlapParams) -- Find nearby enemy parts
 
-	-- Reset state per cast
-	local damagedTargets = {}
-	local targetCount = 0
+	local damagedTargets = {} -- Remember enemies already hit
+	local targetCount = 0 -- Track how many enemies were hit
 
 	for _,part in ipairs(nearbyParts) do
-		if targetCount >= QStats.MaxTarget then
+		if targetCount >= QStats.MaxTarget then -- Stop at the target limit
 			break
 		end
 
-		local target,targetHumanoid = getHumanoidTarget(part)
-
-		if not target then
+		local target,targetHumanoid = getHumanoidTarget(part) -- Check for valid target with Humanoid
+		
+		if not target then  
 			continue
 		end
 
@@ -575,22 +362,22 @@ local function damageQTargets(finalPosition)
 			continue
 		end
 
-		if damagedTargets[target] then
+		if damagedTargets[target] then -- Skip enemies already hit
 			continue
 		end
 
-		if not target:IsDescendantOf(enemyFolder) then
+		if not target:IsDescendantOf(enemyFolder) then -- Skip if target is outside of enemy's folder
 			continue
 		end
 
 		if targetHumanoid.Health <= 0 then
-			continue
+			continue -- Skip if target is dead
 		end
+
+		damagedTargets[target] = true -- Mark this enemy as hit
+		targetCount += 1 -- Count the hit
 		
-		
-		damagedTargets[target] = true
-		targetCount += 1
-		
+		-- Compile data to send to the server
 		local damageData = {
 			Type = "Area",
 			Name = "IllusionistQDMG",
@@ -610,34 +397,27 @@ local function damageQTargets(finalPosition)
 			Duration = 0,
 		}
 
-		-- Send data to the server to be compared with
-		Damage:FireServer(damageData)
+		Damage:FireServer(damageData) -- Send the damage to the server to compare
 	end
 end
 
+-- Use the Q ability
 local function QFire()
-	-- Stop any currently playing LMB attack animations
-	for _,animTrack in ipairs(LMBAnimations) do
-		if animTrack.IsPlaying then
-			animTrack:Stop(.1)
+	for _,animTrack in ipairs(LMBAnimations) do -- Check both LMB animations.
+		if animTrack.IsPlaying then -- if the animation is playing
+			animTrack:Stop(.1) -- Stop the LMB animation
 		end
 	end
 
-	-- Play Q ability animation
-	QANIM:Play()
+	QANIM:Play() -- Play the Q animation
 
-	-- Prevent other abilities/actions while Q is being performed
-	uiFrame.Doing.Value = true
+	uiFrame.Doing.Value = true -- Lock other abilities
 
-	-- Calculate the cast destination once
-	local finalPosition = getQFinalPosition()
+	local finalPosition = getQFinalPosition() -- Get the dash destination
 
-	-- Create a prediction circle showing where the movement burst will end
-	local initialBullet = createQIndicator(finalPosition)
+	local initialBullet = createQIndicator(finalPosition) -- Show where Q will land
 
-	-- Wait before moving the character to the marked location
-	task.delay(QStats.MovementDelay,function()
-		-- Stop if the character died before Q activated
+	task.delay(QStats.MovementDelay,function() -- Wait for the Q wind-up
 		if h.Health <= 0 or not character.Parent then
 			if initialBullet.Parent then
 				initialBullet:Destroy()
@@ -647,24 +427,18 @@ local function QFire()
 			return
 		end
 
-		-- Dash
-		moveCharacterToQPosition(finalPosition)
+		moveCharacterToQPosition(finalPosition) -- Dash to the saved position
 
-		-- Remove the destination marker once the movement burst begins
 		if initialBullet.Parent then
 			initialBullet:Destroy()
 		end
 
-		-- Play the Q explosion sound
 		sounds(character.HumanoidRootPart,"rbxassetid://" .. abilitySounds.QAB,7,1)
 
-		-- Create explosion visual
-		createQExplosion(finalPosition)
+		createQExplosion(finalPosition) -- Create the landing effect
 
-		-- Damage nearby enemies
-		damageQTargets(finalPosition)
+		damageQTargets(finalPosition) -- Damage nearby enemies
 
-		-- Allow ability usage again
 		task.delay(.5,function()
 			if uiFrame.Parent then
 				uiFrame.Doing.Value = false
@@ -673,124 +447,83 @@ local function QFire()
 	end)
 end
 
+-- Handle Q cooldown
 local function Qcooldown()
-	startCooldown("Q",QStats.CD)
-
-	-- Show LMB cooldown without stopping Q Cooldown
-	LMBcooldown(1)
+	startCooldown("Q",QStats.CD) -- Start Q cooldown
 end
 
 ------------------------//ACTIVATED FUNCTIONS\\--------------------------------
 
-local held = false -- For lmb held input
-
--- Used to activate ability and show the cooldown locally
--- @param action: The ability slot name
--- @param cooldown: The ability cooldown function
--- @param fireFunc: The ability activation function
+-- Run the shared ability checks.
 local function inputHandler(action,cooldown,fireFunc)
-	local debounceName = action .. "doing"
+	local debounceName = action .. "doing" -- Get this ability debounce.
 
-	if uiFrame.Doing.Value then
+	if uiFrame.Doing.Value then -- Another ability is already running
 		return
 	end
 
-	if abilityDebounce[debounceName] then
+	if abilityDebounce[debounceName] then -- Stop duplicate activations
 		return
 	end
 
-	if isOnCooldown(action) then
+	if isOnCooldown(action) then -- Stop if it is on cooldown
 		return
 	end
 
-	if h.PlatformStand then
+	if h.PlatformStand then -- Do not use abilities while stunned
 		return
 	end
 
-	if h.Health <= 0 then
+	if h.Health <= 0 then -- Stop if the player is dead
 		return
 	end
 
-	abilityDebounce[debounceName] = true
+	abilityDebounce[debounceName] = true -- Lock this ability
 
-	fireFunc()
-	cooldown()
+	fireFunc() -- Use the ability
+	cooldown() -- Start its cooldown
 
-	abilityDebounce[debounceName] = false
+	abilityDebounce[debounceName] = false -- Unlock the ability
 end
 
--- Keyboard and mouse check for ability usage
 Services.UserInputService.InputBegan:Connect(function(input,gameProcessed)
-	if gameProcessed then
+	if gameProcessed then -- Ignore input already used by the UI
+		return
+	end
+	
+	if not player.Character then -- Prevent usage if character doesn't exist
+		return
+	end
+	
+	if input.KeyCode == Enum.KeyCode.Q then -- Q pressed
+		inputHandler("Q",Qcooldown,QFire) -- Try to use Q
 		return
 	end
 
-	-- Q ability
-	if input.KeyCode == Enum.KeyCode.Q then
-		inputHandler("Q",Qcooldown,QFire)
-		return
-	end
 
-	-- LMB held input
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if held then
-			return
-		end
-
-		held = true
-
-		task.spawn(function()
-			while held do
-				if h.Health <= 0 then
-					held = false
-					break
-				end
-
-				inputHandler("LMB",function()
-					LMBcooldown(0)
-				end,LMBFire)
-
-				Services.RunService.Heartbeat:Wait()
-			end
-		end)
-
-		return
-	end
-
-	-- Movement key check for directional movement
-	if not player.Character then
-		return
-	end
-
-	if input.KeyCode == Enum.KeyCode.A then
+	if input.KeyCode == Enum.KeyCode.A then -- Moving left
 		dashside = "Left"
-	elseif input.KeyCode == Enum.KeyCode.D then
+	elseif input.KeyCode == Enum.KeyCode.D then -- Moving right
 		dashside = "Right"
-	elseif input.KeyCode == Enum.KeyCode.W then
+	elseif input.KeyCode == Enum.KeyCode.W then -- Moving forward
 		dashposition = "Forward"
-	elseif input.KeyCode == Enum.KeyCode.S then
+	elseif input.KeyCode == Enum.KeyCode.S then -- Moving backward
 		dashposition = "Backward"
 	end
 
 end)
 
--- Check for release input for LMB and movement key
 Services.UserInputService.InputEnded:Connect(function(input)
-	-- LMB release
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		held = false
-	end
 
-	-- Movement key release for directional movement
-	if not player.Character then
+	if not player.Character then -- Prevent usage if character doesn't exist
 		return
 	end
 
-	if input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.D then
+	if input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.D then -- Left or right released
 		dashside = "None"
 	end
 
-	if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.S then
+	if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.S then -- Forward or backward released
 		dashposition = "None"
 	end
 end)
